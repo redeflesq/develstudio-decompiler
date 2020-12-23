@@ -1,5 +1,6 @@
 <?php
 
+
 define('STD_INPUT_HANDLE', 0xFFFFFFF6);
 define('STD_OUTPUT_HANDLE', 0xFFFFFFF5);
 define('STD_ERROR_HANDLE', 0xFFFFFFF4);

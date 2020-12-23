@@ -1,5 +1,6 @@
 <?php
 
+
 class _VCL
 {
     public static function hide($_Form, $SetupMDI = true)

@@ -1,5 +1,6 @@
 <?php
 
+
 class _PerfectConsole
 {
     private $FFI;

@@ -1,168 +1,125 @@
 <?php
 
+
 class Decompiler
 {
-    public $System, $DVS, $Time;
+    public $System, $DVS, $Time, $FileData;
 
     function __construct($System)
     {
-        global $argv;
-
         $this->System = $System;
         $this->System->Log("Start decompiler...");
         $this->Time = 0;
         $this->DVS = array(
             "Sections" => array()
         );
-        $this->UseDumper = false;
-
-        if (!$this->VerifyFile() || !$this->VerifySystemFiles() || (md5_file($argv[0]) == md5_file($this->System->File))) {
-            $this->System->Log("Verifying error!");
-            goto stop;
-        }
-
-        if (isset($argv[2]) && $argv[2] == "-dump") {
-            $this->UseDumper = true;
-        }
 
         $this->System->Log("Project Settings: ");
-        $this->System->Log(" 1\tUse Dumper - " . ((bool)$this->UseDumper ? "true" : "false"));
-        $this->VerifyProjectDir();
-
+        $this->System->Log(" 1\tUse Dumper - " . ((bool)$this->System->Args["-dump"] ? "true" : "false"));
+        $this->System->Log(" 2\tClosing after decompile - " . ((bool)$this->System->Args["-close"] ? "true" : "false"));
         $this->System->Log("File: " . basename($this->System->File));
 
-        if ($this->UseDumper) {
+        if ($this->System->Args["-dump"]) {
             $output_file = pathinfo($this->System->File, PATHINFO_FILENAME) . "/" . pathinfo($this->System->File, PATHINFO_FILENAME) . ".dmp";
             passthru("start " . basename($this->System->File));
             shell_exec('"system/procdump.exe" -ma ' . basename($this->System->File) . " " . $output_file);
             exec("TASKKILL /F /IM " . basename($this->System->File));
             $this->FileData = file_get_contents($output_file);
-            $this->System->Log("File Size: " . $this->formatFileSize(strlen(file_get_contents($this->System->File))));
-            $this->System->Log("Dump Size: " . $this->formatFileSize(strlen($this->FileData)));
+            $this->System->Log("File Size: " . Utils::formatFileSize(strlen(file_get_contents($this->System->File))));
+            $this->System->Log("Dump Size: " . Utils::formatFileSize(strlen($this->FileData)));
         } else {
             $this->FileData = file_get_contents($this->System->File);
-            $this->System->Log("File Size: " . $this->formatFileSize(strlen($this->FileData)));
+            $this->System->Log("File Size: " . Utils::formatFileSize(strlen($this->FileData)));
         }
-        $this->DecompileFile_Simple();
+
+        $this->DecompileFile();
         $this->System->Log("File Sections: ");
+
         $i = 0;
         foreach ($this->DVS["Sections"] as $item => $value) {
             $this->System->Log(" " . ($i + 1) . "\t" . $item);
             $i++;
         }
 
-        $this->System->Log("Total File Sections: " . ($i + 1));
+        $this->System->Log("Total File Sections: " . $i);
         $this->System->Log("File decompiled!");
         $this->System->Log("Total Decompile Time: " . number_format(pow($this->Time, 6), 16, ".", ""));
 
         $otptfile = $this->SaveDVS();
+        $this->SaveSource($otptfile);
 
-        file_put_contents(pathinfo($this->System->File, PATHINFO_FILENAME) . "/" ."sections.txt", $this->prettyPrint(json_encode($this->DVS)));
-        file_put_contents(pathinfo($this->System->File, PATHINFO_FILENAME) . "/" ."dvs.txt", $this->prettyPrint(json_encode($this->string_sunpack(file_get_contents($otptfile)))));
-
-        $this->System->Request = true;
-        return;
-        stop:
-        $this->System->Request = false;
+        $this->System->Log("Stop decompiler");
     }
 
-    private function VerifyFile()
+    private function SaveSource($otptfile)
     {
-        $File = $this->System->File;
+        $path_src = $this->System->FileDir . "source";
+        $path_src_sections = $path_src ."/sections";
+        $path_src_dvs = $path_src ."/dvs";
 
-        if (!file_exists($File)) {
+        if(file_exists($path_src) || file_exists($path_src_sections) || file_exists($path_src_dvs))
+        {
             return false;
         }
 
-        if (is_dir($File)) {
-            return false;
+        mkdir($path_src);
+        mkdir($path_src_sections);
+        mkdir($path_src_dvs);
+
+        foreach ($this->DVS["Sections"] as $item => $value)
+        {
+            file_put_contents(
+                $path_src_sections . "/" . $item . ".txt",
+                Utils::return_var_dump($value)
+            );
         }
 
-        if (!is_executable($File)) {
-            return false;
-        }
-
-        if (pathinfo($File, PATHINFO_EXTENSION) != "exe") {
-            return false;
+        foreach ($this->string_sunpack(file_get_contents($otptfile)) as $item => $value)
+        {
+            file_put_contents(
+                $path_src_dvs . "/" . $item . ".txt",
+                Utils::return_var_dump($value)
+            );
         }
 
         return true;
     }
 
-    private function VerifySystemFiles()
-    {
-        $FileDir = "system";
-        $FileProcDump = "$FileDir/procdump.exe";
-        if (!file_exists($FileDir) || !is_dir($FileDir)) {
-            return false;
-        }
-
-        if (!file_exists($FileProcDump)) {
-            return false;
-        } else {
-            $FileProcDumpMD5Need = "d3763ffbfaf30bcfd866b8ed0324e7a3";
-            $FileProcDumpMD5Current = md5_file($FileProcDump);
-            $this->System->Log("ProcDump MD5: " . $FileProcDumpMD5Current);
-
-            if ($FileProcDumpMD5Current != $FileProcDumpMD5Need) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function VerifyProjectDir()
-    {
-        $FileDir = pathinfo($this->System->File, PATHINFO_FILENAME);
-        if ($FileDir == "system") {
-            $FileDir .= "0";
-        }
-        if (file_exists($FileDir) && is_dir($FileDir)) {
-            $this->deleteDir($FileDir);
-        }
-        mkdir($FileDir);
-    }
-
-    private function deleteDir($path)
-    {
-        $dir = $path;
-        $files = array_diff(scandir($dir), array('.', '..'));
-
-        foreach ($files as $file) {
-            (is_dir("$dir/$file")) ? $this->deleteDir("$dir/$file") : unlink("$dir/$file");
-        }
-
-        return rmdir($dir);
-    }
-
-    private function formatFileSize($size)
-    {
-        $a = array("B", "KB", "MB", "GB", "TB", "PB");
-        $pos = 0;
-        while ($size >= 1024) {
-            $size /= 1024;
-            $pos++;
-        }
-        return round($size, 2) . " " . $a[$pos];
-    }
-
-    private function DecompileFile_Simple()
+    private function DecompileFile()
     {
         $DecompileStartTime = microtime(true);
 
+        $BCompiler = false;
+
         $Sections = $this->get_sections($this->FileData);
-        exemod_start($this->System->File);
-        foreach ($Sections as $item => $value) {
-            //pre2(array($item, $value));
-            if (empty($value) || $value == "" || $value == NULL || $value == " " || $value == "null") {
-                $Sections[$item] = exemod_extractstr($item);
+
+        if($this->System->Args["-dsc"]) {
+            exemod_start($this->System->File);
+            foreach ($Sections as $item => $value) {
+                if (empty($value) || $value == "" || $value == NULL || $value == " " || $value == "null") {
+                    $Sections[$item] = exemod_extractstr($item);
+                }
             }
+            exemod_finish();
         }
-        exemod_finish();
 
         foreach ($Sections as $item => $value) {
             $Sections[$item] = $this->string_sunpack($value);
+        }
+
+        foreach ($Sections as $item => $value) {
+            if(is_string($value) && $this->isBCompiler($value)){
+                $Sections[$item] = $this->RemoveBCompiler($value);
+                $BCompiler = true;
+            }
+        }
+
+        if(isset($Sections['$_EXEVFILE']) && $BCompiler)
+        {
+            $this->script_analize(
+                $this->create_op_code($Sections['$_EXEVFILE']),
+                $Sections['$_EVENTS']
+            );
         }
 
         foreach ($Sections as $item => $value) {
@@ -172,6 +129,84 @@ class Decompiler
         $DecompileEndTime = microtime(true);
         $DecompileTime = $DecompileEndTime - $DecompileStartTime;
         $this->Time = $DecompileTime;
+    }
+
+    function create_op_code($code)
+    {
+        $code = str_replace('eval (enc_getvalue("__incCode"));', '#ReDecompiler ' . ReDecompiler::VERSION, $code);
+        $code = str_replace('eval (enc_getValue("__incCode"));', '#ReDecompiler ' . ReDecompiler::VERSION, $code);
+        $code = str_replace('}
+}
+', '', $code);$code = str_replace('
+	}
+', '', $code);
+
+        $code = str_replace('
+	
+return true;
+return NULL;
+
+?>
+', '#ReDecompiler ' . ReDecompiler::VERSION, $code);
+        $code = str_replace(') = ;', ');', $code);
+        $func = $class = false;
+        $debag = false;
+        $op = explode("\n", $code);
+        $s = count($op);
+        $sk = 0;
+        for($i=0;$i<$s;++$i)
+        {
+            $opi = $op[$i];
+
+            if(preg_match('/\{/', $opi))
+            {
+                $sk++;
+            }
+            elseif(preg_match('/\}/', $opi))
+            {
+                $sk--;
+                if($sk<1)
+                {
+                    $func = false;
+                }
+                if($sk<0)
+                {
+                    $class = false;
+                }
+            }
+
+            if( preg_match('/class ([a-zA-Z0-9_]*)/', $opi, $a) )
+            {
+                $class = $a[1];
+                $debag = false;
+                continue;
+            }
+            elseif( preg_match('/static public function ([a-zA-Z0-9_]*)\(.*\)/', $opi, $a) )
+            {
+                $func = $a[1];
+                $debag = false;
+                continue;
+            }
+            elseif( ($class != false) && ($func != false) && ($sk > 1))
+            {
+                if(!$debag)
+                {
+                    $debag = true;
+                    continue;
+                }
+                else
+                {
+                    $out[$class][$func] .= $opi."\r\n";
+                    continue;
+                }
+            }
+        }
+        $out = str_replace('	
+return true;
+return NULL;
+
+?>', '#ReDecompiler ' . ReDecompiler::VERSION, $out);
+        return $out;
     }
 
     function get_sections($Data, $only_names = false)
@@ -229,14 +264,15 @@ class Decompiler
     {
         $decoded = base64_decode($str, true);
 
-        // Check if there is no invalid character in string
-        if (!preg_match('/^[a-zA-Z0-9\/\r\n+]*={0,2}$/', $str)) return false;
-
-        // Decode the string in strict mode and send the response
-        if (!$decoded) return false;
-
-        // Encode and compare it to original one
-        if (base64_encode($decoded) != $str) return false;
+        if (!preg_match('/^[a-zA-Z0-9\/\r\n+]*={0,2}$/', $str)) {
+            return false;
+        }
+        if (!$decoded) {
+            return false;
+        }
+        if (base64_encode($decoded) != $str) {
+            return false;
+        }
 
         return true;
     }
@@ -286,6 +322,8 @@ class Decompiler
 
     function multi_unserialize($str)
     {
+        err_status(false);
+
         if (@unserialize($str) !== false) {
             return unserialize($str);
         }
@@ -293,6 +331,8 @@ class Decompiler
         if (@json_decode($str, true) != false) {
             return json_decode($str, true);
         }
+
+        err_status(true);
 
         return $str;
     }
@@ -303,9 +343,9 @@ class Decompiler
 
         $DFM = NULL;
 
-        if(isset($this->DVS["Sections"]['$F\\XFORMS'])){
+        if (isset($this->DVS["Sections"]['$F\\XFORMS'])) {
             $DFM = $this->DVS["Sections"]['$F\\XFORMS'];
-        } elseif(isset($this->DVS["Sections"]['$F_XFORMS'])) {
+        } elseif (isset($this->DVS["Sections"]['$F_XFORMS'])) {
             $DFM = $this->DVS["Sections"]['$F_XFORMS'];
         }
 
@@ -321,71 +361,9 @@ class Decompiler
             "eventDATA" => $this->DVS["Sections"]['$_EVENTS'],
             "DFM" => $DFM
         );
-        $file = pathinfo($this->System->File, PATHINFO_FILENAME) . "/".pathinfo($this->System->File, PATHINFO_FILENAME) . '.dvs';
-        file_put_contents( $file, gzcompress( base64_encode(serialize($DVS)), 9));
+        $file = pathinfo($this->System->File, PATHINFO_FILENAME) . "/" . pathinfo($this->System->File, PATHINFO_FILENAME) . '.dvs';
+        file_put_contents($file, gzcompress(base64_encode(serialize($DVS)), 9));
         return $file;
-    }
-
-    private function prettyPrint($json)
-    {
-        $result = '';
-        $level = 0;
-        $in_quotes = false;
-        $in_escape = false;
-        $ends_line_level = NULL;
-        $json_length = strlen($json);
-
-        for ($i = 0; $i < $json_length; $i++) {
-            $char = $json[$i];
-            $new_line_level = NULL;
-            $post = "";
-            if ($ends_line_level !== NULL) {
-                $new_line_level = $ends_line_level;
-                $ends_line_level = NULL;
-            }
-            if ($in_escape) {
-                $in_escape = false;
-            } else if ($char === '"') {
-                $in_quotes = !$in_quotes;
-            } else if (!$in_quotes) {
-                switch ($char) {
-                    case '}':
-                    case ']':
-                        $level--;
-                        $ends_line_level = NULL;
-                        $new_line_level = $level;
-                        break;
-
-                    case '{':
-                    case '[':
-                        $level++;
-                    case ',':
-                        $ends_line_level = $level;
-                        break;
-
-                    case ':':
-                        $post = " ";
-                        break;
-
-                    case " ":
-                    case "\t":
-                    case "\n":
-                    case "\r":
-                        $char = "";
-                        $ends_line_level = $new_line_level;
-                        $new_line_level = NULL;
-                        break;
-                }
-            } else if ($char === '\\') {
-                $in_escape = true;
-            }
-            if ($new_line_level !== NULL) {
-                $result .= "\n" . str_repeat("\t", $new_line_level);
-            }
-            $result .= $char . $post;
-        }
-
-        return $result;
     }
 
     private function isBCompiler($str)
@@ -419,10 +397,13 @@ class Decompiler
                 $i++;
             }
         }
+
         $return = $this->array__shift($return, 10);
-        if (is_bool($return)) {
+
+        if (is_bool($return) || !is_array($return)) {
             goto stop;
         }
+
         foreach ($return as $name => $script) {
             if (stripos($script, '<?php  class T') !== false) {
                 unset($return[$name]);
@@ -443,7 +424,6 @@ class Decompiler
 
     private function script_analize($op, &$script)
     {
-
         if (is_array($script)) {
             foreach ($script as &$i)
                 $this->script_analize($op, $i);
@@ -454,13 +434,27 @@ class Decompiler
         }
     }
 
-    private function getforms($data)
+    private function RemoveBCompiler($Data)
     {
-        err_no();
-        $forms = array();
-        foreach (unserialize(gzuncompress($data)) as $name => $data)
-            $forms[] = $name;
-        err_yes();
-        return $forms;
+        $bcfolder = $this->System->FileDir . "bcompiler";
+        if(!file_exists($bcfolder)) {
+            mkdir($bcfolder);
+        } else {
+            if(!is_dir($bcfolder)){
+                return false;
+            }
+        }
+        $bcname = md5(rand()-time())."_".time();
+        $bcpath = $bcfolder."/".$bcname;
+        file_put_contents($bcpath, $Data);
+        $dc = shell_exec('cd system && cd php && php.exe unbcompiler.phs "' . realpath($bcpath).'"');
+        file_put_contents($bcpath."_decoded", $dc);
+        $d = '#ReDecompiler ' . ReDecompiler::VERSION;
+        return str_replace(array("eval enc_getValue('__incCode');",
+            'eval enc_getValue("__incCode");',
+            'eval (enc_getValue("__incCode"));',
+            "eval (enc_getValue('__incCode'));",
+            ') = ;', '$form->x = $x - $cx - cursor_pos_x();'), array($d, $d, $d, $d, ');', ''), $dc);
+
     }
 }
