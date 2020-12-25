@@ -3,7 +3,7 @@
 
 class ReDecompiler
 {
-    const VERSION = "1.1";
+    const VERSION = "1.2";
 
     public $Form, $Args, $File, $FileDir, $Console, $LogSystem;
 
@@ -40,6 +40,11 @@ class ReDecompiler
             goto stop;
         }
 
+        $this->Log("Project Settings: ");
+        $this->Log(" 1\tUse Dumper(Dangerous!) - " . ((bool)$this->Args["-dump"] ? "true" : "false"));
+        $this->Log(" 2\tClosing after decompile - " . ((bool)$this->Args["-close"] ? "true" : "false"));
+        $this->Log(" 3\tDouble sections check - " . ((bool)$this->Args["-dsc"] ? "true" : "false"));
+
         $this->VerifyProjectDir();
         $this->InitializeDecompiler();
         $this->LogSystem->Save();
@@ -53,7 +58,8 @@ class ReDecompiler
         return;
 
         stop_while:
-        $this->Console->Echof("Press Enter to exit...");
+        $this->Console->Echof("Press Enter for exit...");
+
         while (1) {
             if ($this->Console->GetKeyState(VK_RETURN)) {
                 $this->Stop();

@@ -49,6 +49,26 @@ class Utils
         $args = func_get_args();
         ob_start();
         call_user_func_array('var_dump', $args);
-        return ob_get_clean();
+        $ogc = ob_get_clean();
+        $caption = "#ReDecompiler " . ReDecompiler::VERSION . "\n";
+        $ogc = $caption . $ogc;
+        return $ogc;
+    }
+
+    static function tsubtoken($tokens, $id, $nToken, $Cps = 0)
+    {
+        $nid = 1;
+        $ncps = $Cps;
+        while (
+            isset($tokens[$id + $nid][0]) && ($tokens[$id + $nid][0] != $nToken || (!is_array($tokens[$id + $nid]) && $tokens[$id + $nid] != $nToken))
+        ) {
+            $nid += 1;
+            if (($ncps > 0)) {
+                $ncps -= 1;
+            } elseif ($Cps != 0) {
+                break;
+            }
+        }
+        return $id + $nid;
     }
 }
