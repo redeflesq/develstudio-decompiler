@@ -55,7 +55,9 @@ class Decompiler
         $BCompiler = false;
 
         $DVS = array(
-            "Sections" => $this->get_sections($this->FileData)
+            "Sections" => $this->get_sections($this->FileData),
+            "Scripts" => array(),
+            "Data" => array()
         );
 
         if ($this->System->Args["-dsc"]) {
@@ -86,16 +88,17 @@ class Decompiler
             );
         }
 
-        $DVS["Scripts"] = array();
-        foreach ($this->getscripts($DVS["Sections"]['$X_MODULES']) as $script => $data) {
-            $sname = $this->getScriptName($data);
-            if($sname){
-                $script = $sname;
+        if(isset($DVS["Sections"]['$X_MODULES'])) {
+            foreach ($this->getscripts($DVS["Sections"]['$X_MODULES']) as $script => $data) {
+                $sname = $this->getScriptName($data);
+                if ($sname) {
+                    $script = $sname;
+                }
+                $DVS['Scripts'][$script . '.php'] = $data;
             }
-            $DVS['Scripts'][$script . '.php'] = $data;
         }
 
-        if ($DVS["Sections"]['$RESLIST$'] !== false) {
+        if (isset($DVS["Sections"]['$RESLIST$'])) {
             exemod_start($this->System->File);
             foreach ($DVS["Sections"]['$RESLIST$'] as $file) {
                 $value = exemod_extractstr($file);
@@ -428,10 +431,8 @@ return NULL;
             "CONFIG" => $this->DVS["Sections"]['$X_CONFIG']["config"],
             "formsInfo" => $this->DVS["Sections"]['$X_CONFIG']["formsInfo"],
             "add_info" => array(
-                'add_info' => array(
-                    'DV_VERSION' => '3.0.2.0',
-                    'DV_PREFIX' => 'beta 2'
-                )
+                'DV_VERSION' => '3.0.2.0',
+                'DV_PREFIX' => 'beta 2'
             ),
             "eventDATA" => $this->DVS["Sections"]['$_EVENTS'],
             "DFM" => $DFM,
@@ -447,53 +448,67 @@ return NULL;
 
     private function SaveSource($otptfile)
     {
-        $path_src = $this->System->FileDir . "source";
+        $path_src = "./".$this->System->FileDir . "source";
         $path_src_sections = $path_src . "/sections";
         $path_src_dvs = $path_src . "/dvs";
         $path_src_scripts = $path_src . "/scripts";
         $path_src_resources = $path_src . "/resources";
 
-        if (file_exists($path_src) || file_exists($path_src_sections) || file_exists($path_src_dvs)) {
+        if (file_exists($path_src) || file_exists($path_src_sections) ||
+            file_exists($path_src_dvs) || file_exists($path_src_scripts) ||
+            file_exists($path_src_resources)) {
             return false;
         }
 
         mkdir($path_src);
-        mkdir($path_src_sections);
-        mkdir($path_src_dvs);
-        mkdir($path_src_scripts);
-        mkdir($path_src_resources);
 
-
-        foreach ($this->DVS["Data"] as $item => $value) {
-            file_put_contents(
-                $path_src_resources . "/" . $item,
-                $value
-            );
-        }
-
-
-        foreach ($this->DVS["Scripts"] as $item => $value) {
-            if (substr($item, -4) != ".php") {
-                $item .= ".php";
+        if(isset($this->DVS["Data"])) {
+            mkdir($path_src_resources);
+            foreach ($this->DVS["Data"] as $item => $value) {
+                file_put_contents(
+                    $path_src_resources . "/" . $item,
+                    $value
+                );
             }
-            file_put_contents(
-                $path_src_scripts . "/" . $item,
-                $value
-            );
         }
 
-        foreach ($this->DVS["Sections"] as $item => $value) {
-            file_put_contents(
-                $path_src_sections . "/" . $item . ".txt",
-                Utils::return_var_dump($value)
-            );
+        if(isset($this->DVS["Scripts"])) {
+            mkdir($path_src_scripts);
+            foreach ($this->DVS["Scripts"] as $item => $value) {
+                if (substr($item, -4) != ".php") {
+                    $item .= ".php";
+                }
+                file_put_contents(
+                    $path_src_scripts . "/" . $item,
+                    $value
+                );
+            }
         }
 
-        foreach ($this->string_sunpack(file_get_contents($otptfile)) as $item => $value) {
-            file_put_contents(
-                $path_src_dvs . "/" . $item . ".txt",
-                Utils::return_var_dump($value)
-            );
+        if(isset($this->DVS["Sections"])) {
+            mkdir($path_src_sections);
+            foreach ($this->DVS["Sections"] as $item => $value) {
+                $item = str_ireplace(array(
+                    '\\', '/'
+                ),
+                    '_',
+                    $item
+                );
+                file_put_contents(
+                    $path_src_sections . "/" . $item . ".txt",
+                    Utils::return_var_dump($value)
+                );
+            }
+        }
+
+        if(file_exists($otptfile)) {
+            mkdir($path_src_dvs);
+            foreach ($this->string_sunpack(file_get_contents($otptfile)) as $item => $value) {
+                file_put_contents(
+                    $path_src_dvs . "/" . $item . ".txt",
+                    Utils::return_var_dump($value)
+                );
+            }
         }
 
         return true;

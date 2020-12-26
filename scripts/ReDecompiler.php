@@ -3,20 +3,19 @@
 
 class ReDecompiler
 {
-    const VERSION = "1.2";
+    const VERSION = "1.3";
 
-    public $Form, $Args, $File, $FileDir, $Console, $LogSystem;
+    public $RDCaption, $Form, $Args, $File, $FileDir, $Console, $LogSystem;
 
-    function __construct($DSForm, $File = false)
+    public function __construct($DSForm, $File = false)
     {
-        $this->Form = $DSForm;
+        $this->RDCaption = "ReDecompiler " . self::VERSION;
+        $this->Form = _VCL::get_form($DSForm);
         $this->Args = array(
             "-dump" => false, //Get Sections through Dumper
             "-close" => false, //Close program after decompile
             "-dsc" => false //Double Sections Check
         );
-
-        _VCL::hide($this->Form);
 
         if ($File == false) {
             global $argv;
@@ -28,12 +27,14 @@ class ReDecompiler
         $this->Console = NULL;
         $this->LogSystem = NULL;
 
+        _VCL::hide($this->Form);
+
         $this->PerformArgs();
 
         $this->InitializeConsole();
         $this->InitializeLogSystem();
 
-        $this->Log("Start ReDecompiler " . self::VERSION . "...");
+        $this->Log("Start " . $this->RDCaption . "...");
 
         if (!$this->VerifyFile() || !$this->VerifySystemFiles()) {
             $this->Log("Verifying error!");
@@ -52,20 +53,7 @@ class ReDecompiler
         stop:
         if ($this->Args["-close"]) {
             $this->Stop();
-        } else {
-            goto stop_while;
         }
-        return;
-
-        stop_while:
-        $this->Console->Echof("Press Enter for exit...");
-
-        while (1) {
-            if ($this->Console->GetKeyState(VK_RETURN)) {
-                $this->Stop();
-            }
-        }
-        return;
     }
 
     private function PerformArgs()
@@ -80,13 +68,13 @@ class ReDecompiler
     {
         $this->Console = new _PerfectConsole();
         $this->Console->Allocate();
-        $this->Console->SetTitle("ReDecompiler " . self::VERSION);
+        $this->Console->SetTitle($this->RDCaption);
     }
 
     function InitializeLogSystem()
     {
         $this->LogSystem = new LogSystem(
-            "ReDecompiler " . self::VERSION,
+            $this->RDCaption,
             $this->FileDir . pathinfo($this->File, PATHINFO_FILENAME) . ".log.txt"
         );
     }
@@ -179,19 +167,19 @@ class ReDecompiler
         return rmdir($dir);
     }
 
-    function InitializeDecompiler()
+    private function InitializeDecompiler()
     {
         $this->Decompiler = new Decompiler($this);
     }
 
-    function Stop()
+    public function Stop()
     {
         $this->Console->Free();
         _VCL::restoreMDI($this->Form);
         app::close();
     }
 
-    static function Loader($DSForm, $File = false)
+    public static function Loader($DSForm, $File = false)
     {
         return new ReDecompiler($DSForm, $File);
     }
